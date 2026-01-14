@@ -1,21 +1,33 @@
 package course.concurrency.m3_shared.auction;
 
+import java.util.concurrent.locks.ReentrantLock;
+
 public class AuctionStoppablePessimistic implements AuctionStoppable {
 
-    private Notifier notifier;
+    private final Notifier notifier;
+    private final ReentrantLock lock = new ReentrantLock();
+    private volatile Bid latestBid = new Bid(0L, 0L, 0L);
+    private volatile boolean isOpenBid = true;
 
     public AuctionStoppablePessimistic(Notifier notifier) {
         this.notifier = notifier;
     }
 
-    private Bid latestBid;
-
     public boolean propose(Bid bid) {
-        if (bid.getPrice() > latestBid.getPrice()) {
-            notifier.sendOutdatedMessage(latestBid);
-            latestBid = bid;
-            return true;
+        if (isOpenBid && (bid.getPrice() > latestBid.getPrice())) {
+            lock.lock();
+
+            try {
+                if (isOpenBid && (bid.getPrice() > latestBid.getPrice())) {
+                    notifier.sendOutdatedMessage(latestBid);
+                    latestBid = bid;
+                    return true;
+                }
+            } finally {
+                lock.unlock();
+            }
         }
+
         return false;
     }
 
@@ -24,6 +36,12 @@ public class AuctionStoppablePessimistic implements AuctionStoppable {
     }
 
     public Bid stopAuction() {
+        lock.lock();
+        try {
+            isOpenBid = false;
+        } finally {
+            lock.unlock();
+        }
         return latestBid;
     }
 }
