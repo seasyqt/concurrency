@@ -1,43 +1,35 @@
 package course.concurrency.m3_shared.immutable;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class OrderService {
 
-    private Map<Long, Order> currentOrders = new HashMap<>();
-    private long nextId = 0L;
+    private final ConcurrentHashMap<Long, Order> currentOrders = new ConcurrentHashMap<>();
 
-    private synchronized long nextId() {
-        return nextId++;
-    }
-
-    public synchronized long createOrder(List<Item> items) {
-        long id = nextId();
+    public long createOrder(List<Item> items) {
         Order order = new Order(items);
-        order.setId(id);
-        currentOrders.put(id, order);
-        return id;
+        currentOrders.put(order.getId(), order);
+        return order.getId();
     }
 
-    public synchronized void updatePaymentInfo(long orderId, PaymentInfo paymentInfo) {
-        currentOrders.get(orderId).setPaymentInfo(paymentInfo);
-        if (currentOrders.get(orderId).checkStatus()) {
-            deliver(currentOrders.get(orderId));
+    public void updatePaymentInfo(long orderId, PaymentInfo paymentInfo) {
+        Order order = currentOrders.compute(orderId, (id, o) -> o.withPaymentInfo(paymentInfo));
+        if (order.checkStatus()) {
+            deliver(order);
         }
     }
 
-    public synchronized void setPacked(long orderId) {
-        currentOrders.get(orderId).setPacked(true);
-        if (currentOrders.get(orderId).checkStatus()) {
-            deliver(currentOrders.get(orderId));
+    public void setPacked(long orderId) {
+        Order order = currentOrders.compute(orderId, (id, o) -> o.packed());
+        if (order.checkStatus()) {
+            deliver(order);
         }
     }
 
-    private synchronized void deliver(Order order) {
+    private void deliver(Order order) {
         /* ... */
-        currentOrders.get(order.getId()).setStatus(Order.Status.DELIVERED);
+        currentOrders.compute(order.getId(), (id, o) -> o.withStatus(Order.Status.DELIVERED));
     }
 
     public synchronized boolean isDelivered(long orderId) {
